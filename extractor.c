@@ -362,23 +362,28 @@ void extractNand(void)
 	extractFST(0, "");
 }
 
-uint8_t* getCluster(uint16_t cluster_entry)
-{
-	uint8_t* cluster = calloc(0x4000, sizeof(uint8_t));
-	uint8_t* page = calloc(getPageSize(), sizeof(uint8_t));
+int getCluster(uint16_t cluster_entry, uint8_t *outBuf){
+	static uint8_t cluster_buff[(PAGE_SIZE + SPARE_SIZE) * 8];
 
-	rewind(rom);
+	//rewind(rom);
 	fseek(rom, cluster_entry * getClusterSize(), SEEK_SET);
 
-	for (int i = 0; i < 8; i++)
-	{
-		fread(page, sizeof(uint8_t), getPageSize(), rom);
-		memcpy((uint8_t*) cluster + (i * 0x800), page, 0x800);
+	int res = 0;
+	int read_size = 0;
+	if(fileType == NoECC){
+		read_size=PAGE_SIZE * 8;
+		res = fread(outBuf, sizeof(uint8_t), read_size, rom);
+	} else {
+		read_size = (PAGE_SIZE + SPARE_SIZE) * 8;
+		res = fread(cluster_buff, sizeof(uint8_t), read_size, rom);
+		for (int i = 0; i < 8; i++){
+			memcpy((uint8_t*) outBuf + (i * PAGE_SIZE), cluster_buff + i * (PAGE_SIZE + SPARE_SIZE), PAGE_SIZE);
+		}
 	}
 
-	free(page);
+	aesDecrypt(key, outBuf, PAGE_SIZE * 8);
 
-	return aesDecrypt(key, cluster, 0x4000);
+	return res==read_size ? 0:-1;
 }
 
 uint16_t getFAT(uint16_t fat_entry)
@@ -395,7 +400,7 @@ uint16_t getFAT(uint16_t fat_entry)
 	int32_t n_fat = (fileType == NoECC) ? 0 : 0x20;
 	int32_t loc = loc_fat + ((((fat_entry / 0x400) * n_fat) + fat_entry) * 2);
 
-	rewind(rom);
+	//rewind(rom);
 	fseek(rom, loc, SEEK_SET);
 
 	uint16_t fat;
@@ -483,11 +488,14 @@ void extractFile(fst_t fst, uint16_t entry, char* parent)
 	for (int i = 0; fat < 0xFFF0; i++)
 	{
 		//extracting...
-		printf("extracting %s cluster %i\n", filename, i);
-		uint8_t* cluster = getCluster(fat);
-		memcpy((uint8_t*) (data + (i * 0x4000)), cluster, 0x4000);
+		//printf("extracting %s cluster %i\n", filename, i);
+		int res = getCluster(fat, data + (i * 0x4000));
+		if(res){
+			printf("Error reading cluster %u\n", i);
+		}
+		//memcpy((uint8_t*) (data + (i * 0x4000)), cluster, 0x4000);
 		fat = getFAT(fat);
-		free(cluster);
+		//free(cluster);
 	}
 
 	fwrite(data, fst.size, 1, bf);

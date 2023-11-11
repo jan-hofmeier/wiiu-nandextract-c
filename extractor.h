@@ -64,7 +64,7 @@ uint8_t* readKeyfile(char* path);
 uint8_t* readOTP(char* path);
 int32_t findSuperblock(void);
 
-uint8_t* getCluster(uint16_t cluster_entry);
+int getCluster(uint16_t cluster_entry, uint8_t *outBuf);
 uint16_t getFAT(uint16_t fat_entry);
 fst_t getFST(uint16_t entry);
 void extractNand(void);
